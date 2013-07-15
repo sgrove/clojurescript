@@ -9,13 +9,11 @@
 (set! *warn-on-reflection* true)
 
 (ns cljs.analyzer
-  (:refer-clojure :exclude [macroexpand-1 read read-string *default-data-reader-fn* *read-eval* *data-readers*])
+  (:refer-clojure :exclude [macroexpand-1])
   (:require [clojure.java.io :as io]
             [clojure.string :as string]
             [cljs.tagged-literals :as tags]
             [clojure.tools.reader :as reader])
-  (:use [clojure.tools.reader :only [read read-string *default-data-reader-fn* *read-eval* *data-readers*]])
-
   (:import java.lang.StringBuilder))
 
 (def ^:dynamic *cljs-ns* 'cljs.user)
@@ -1003,7 +1001,7 @@
 (defn forms-seq
   "Seq of forms in a Clojure or ClojureScript file."
   ([f]
-     (forms-seq f (reader.reader-types/indexing-push-back-reader (slurp f))))
+     (forms-seq f (clojure.tools.reader.reader-types/indexing-push-back-reader (slurp f))))
   ([f rdr]
      (lazy-seq
       (if-let [form (binding [*ns* (create-ns *cljs-ns*)] (reader/read rdr nil nil))]
@@ -1019,8 +1017,8 @@
         (let [env (empty-env)
               pbr (clojure.lang.LineNumberingPushbackReader. r)
               eof (Object.)]
-          (loop [r (read pbr false eof false)]
+          (loop [r (reader/read pbr false eof false)]
             (let [env (assoc env :ns (get-namespace *cljs-ns*))]
               (when-not (identical? eof r)
                 (analyze env r)
-                (recur (read pbr false eof false))))))))))
+                (recur (reader/read pbr false eof false))))))))))
