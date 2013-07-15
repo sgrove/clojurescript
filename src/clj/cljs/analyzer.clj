@@ -9,10 +9,13 @@
 (set! *warn-on-reflection* true)
 
 (ns cljs.analyzer
-  (:refer-clojure :exclude [macroexpand-1])
+  (:refer-clojure :exclude [macroexpand-1 read read-string *default-data-reader-fn* *read-eval* *data-readers*])
   (:require [clojure.java.io :as io]
             [clojure.string :as string]
-            [cljs.tagged-literals :as tags])
+            [cljs.tagged-literals :as tags]
+            [clojure.tools.reader :as reader])
+  (:use [clojure.tools.reader :only [read read-string *default-data-reader-fn* *read-eval* *data-readers*]])
+
   (:import java.lang.StringBuilder))
 
 (def ^:dynamic *cljs-ns* 'cljs.user)
@@ -1000,12 +1003,11 @@
 (defn forms-seq
   "Seq of forms in a Clojure or ClojureScript file."
   ([f]
-     (forms-seq f (clojure.lang.LineNumberingPushbackReader. (io/reader f))))
-  ([f ^java.io.PushbackReader rdr]
-    (lazy-seq
-      (if-let [form (binding [*ns* (create-ns *cljs-ns*)] (read rdr nil nil))]
-        (cons form (forms-seq f rdr))
-        (.close rdr)))))
+     (forms-seq f (reader.reader-types/indexing-push-back-reader (slurp f))))
+  ([f rdr]
+     (lazy-seq
+      (if-let [form (binding [*ns* (create-ns *cljs-ns*)] (reader/read rdr nil nil))]
+        (cons form (forms-seq f rdr))))))
 
 (defn analyze-file
   [^String f]
