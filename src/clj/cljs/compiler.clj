@@ -562,13 +562,16 @@
                                                       (gensym (str (:name %) "-")))
                                              bindings)))]
       (doseq [{:keys [init] :as binding} bindings]
-        (emitln "var " (merge  {:env (merge env {:line (:line binding)
-                                                 :column (:column binding)})
-                                :op :var
-                                :info {:name (:name binding)
-                                       :just-munge? true
-                                       :line (:line binding)
-                                       :column (:column binding)}}) " = " init ";"))
+        (emitln "var "
+                ; Get emit to treat the binding as a :var for proper
+                ; source-map tracking
+                (merge  {:env (merge env {:line (:line binding)
+                                          :column (:column binding)})
+                         :op :var
+                         :info {:name (:name binding)
+                                :just-munge? true
+                                :line (:line binding)
+                                :column (:column binding)}}) " = " init ";"))
       (when is-loop (emitln "while(true){"))
       (emits expr)
       (when is-loop
