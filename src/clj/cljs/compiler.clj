@@ -208,13 +208,20 @@
               (let [minfo {:gcol  @*cljs-gen-col*
                            :gline @*cljs-gen-line*
                            :name  var-name}]
-                (update-in m [line]
+                ; Dec the line number for 0-indexed line numbers
+                ; expected in chrome source maps. Seems to be right.
+                (update-in m [(dec line)]
                   (fnil (fn [m]
                           (update-in m [(or column 0)]
                             (fnil (fn [v] (conj v minfo)) [])))
                     (sorted-map)))))))))
-    (when-not (= :statement (:context env))
-      (emit-wrap env (emits (munge info))))))
+    ; We need a way to write vars out to source maps and javascript
+    ; without getting wrapped in an emit-wrap call, otherwise we get
+    ; e.g. (function greet(return x, return y) {})
+    (if (:just-munge? info)
+      (emits (munge info))
+      (when-not (= :statement (:context env))
+        (emit-wrap env (emits (munge info)))))))
 
 (defmethod emit :meta
   [{:keys [expr meta env]}]
@@ -372,7 +379,30 @@
 (defn emit-fn-method
   [{:keys [type name variadic params expr env recurs max-fixed-arity]}]
   (emit-wrap env
-             (emitln "(function " (munge name) "(" (comma-sep (map munge params)) "){")
+             (emits "(function ")
+             ; TODO: Emit source-map for this inner declaration? Maybe
+             ; unecessary.
+             ;                 hello.core.greet = (function greet(){})
+             ; e.g. Do we need source-map for this ---------^?
+             ; If so, we can't just munge the name and spit out a
+             ; string.
+             (emits (munge name))
+             (emits "(")
+             (doseq [param params]
+               ; associate enough with the param to get emit to treat
+               ; it as a :var
+               (emit (assoc param
+                       :op :var
+                       :env (merge env
+                                   {:line (:line param)
+                                    :column (:column param)})
+                       :info {:name (:name param)
+                              :just-munge? true}))
+               ; Avoid extraneous comma (function greet(x, y, z,)
+               (when-not (= param (last params))
+                 (emits ",")))
+             (emits "){")
+             (emitln)
              (when type
                (emitln "var self__ = this;"))
              (when recurs (emitln "while(true){"))
@@ -528,7 +558,16 @@
                                                       (gensym (str (:name %) "-")))
                                              bindings)))]
       (doseq [{:keys [init] :as binding} bindings]
-        (emitln "var " (munge binding) " = " init ";"))
+        (emitln "var "
+                ; Get emit to treat the binding as a :var for proper
+                ; source-map tracking
+                (merge  {:env (merge env {:line (:line binding)
+                                          :column (:column binding)})
+                         :op :var
+                         :info {:name (:name binding)
+                                :just-munge? true
+                                :line (:line binding)
+                                :column (:column binding)}}) " = " init ";"))
       (when is-loop (emitln "while(true){"))
       (emits expr)
       (when is-loop
