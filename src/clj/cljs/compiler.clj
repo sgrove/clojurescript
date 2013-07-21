@@ -395,7 +395,7 @@
              (doseq [param params]
                ; associate enough with the param to get emit to treat
                ; it as a :var
-               ;(println param " | " (meta param))
+               (println param " | " (meta param))
                (emit (assoc param
                        :op :var
                        :env (merge env

@@ -27,12 +27,12 @@
 (def depth (atom 0))
 
 (defn ptab [& msgs]
-  (let [;s (apply str (concat (repeat @depth "\t") msgs))
+  (let [s (apply str (concat (repeat @depth "\t") msgs))
         chars ["*" "/" "!" "@" "+" "~" "&" "^"]
         rand-char (nth chars (rand-int (count chars)))]
-    ;(println s)
+    (println s)
     ;(spit "out/output.txt" s :append true)
-    (spit "out/output.txt" rand-char :append true)
+    ;(spit "out/output.txt" rand-char :append true)
     ))
 
 (def ^:dynamic *cljs-warnings*
@@ -296,6 +296,8 @@
      :catch catch
      :children [try catch finally]}))
 
+(declare analyze-params)
+
 (defmethod parse 'def
   [op env form name]
   (ptab "Parsing 'def*")
@@ -363,7 +365,7 @@
                       :protocol-inline (:protocol-inline init-expr)
                       :variadic (:variadic init-expr)
                       :max-fixed-arity (:max-fixed-arity init-expr)
-                      :method-params (map :params (:methods init-expr))})))
+                      :method-params (map (comp (partial analyze-params env) :params) (:methods init-expr))})))
       (merge {:env env :op :def :form form
               :name name :var var-expr :doc doc :init init-expr}
              (when tag {:tag tag})
@@ -430,7 +432,7 @@
                             :fn-var true
                             :variadic variadic
                             :max-fixed-arity max-fixed-arity
-                            :method-params (map :params methods))
+                            :method-params (map (comp (partial analyze-params env) :params) methods))
                  locals)
         methods (if name
                   ;; a second pass with knowledge of our function-ness/arity
@@ -515,7 +517,8 @@
                             {:fn-var true
                              :variadic (:variadic init-expr)
                              :max-fixed-arity (:max-fixed-arity init-expr)
-                             :method-params (map :params (:methods init-expr))})
+                             :method-params (map (comp (partial analyze-params env) :params) (:methods init-expr))
+                             })
                           be)]
                  (recur (conj bes be)
                         (assoc-in env [:locals name] be)
@@ -891,6 +894,9 @@
      {:env env :op :invoke :form form :f fexpr :args argexprs
       :tag (or (-> fexpr :info :tag) (-> form meta :tag)) :children (into [fexpr] argexprs)})))
 
+(defn analyze-params [env params]
+  (map (comp (partial analyze-symbol env) :name) params))
+
 (defn analyze-symbol
   "Finds the var associated with sym"
   [env sym]
@@ -899,10 +905,10 @@
     (let [ret {:env env :form sym}
           lb (-> env :locals sym)]
       (ptab "Analyzing sym:" (meta sym) " | " sym " -> " (pr-str {:op       :var
-                                                    :name    (:name lb)
-                                                    :def-var (:def-var env)
-                                                    :line    (:line (meta sym))
-                                                    :column  (:column (meta sym))}))
+                                                                  :name    (:name lb)
+                                                                  :def-var (:def-var env)
+                                                                  :line    (:line (meta sym))
+                                                                  :column  (:column (meta sym))}))
       (if lb
         (do
           (ptab "lb therefore: " (assoc ret :op :var :info lb))

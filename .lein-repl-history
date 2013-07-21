@@ -1,0 +1,71 @@
+1
+2
+(refresh{
+)
+(refresh)
+1
+2
+3
+4
+5
+56
+6
+(clojure.core/require 'user :reload)  
+*e
+(.printStackTrace *.)
+(clojure.core/require 'user :reload)  
+(def error *e)
+(.printStacktrace error)
+(.printStackTrace error)
+(ns cljs.compiler)
+(load "compiler")
+(cljsc/build "src" {:optimizations :simple :output-to "hello.js" :source-map "hello.js.map"})
+(cljsc/build "samples/hello/src" {:optimizations :simple :output-to "/tmp/hello.js" :source-map "/tmp/hello.js.map"})
+cljsc
+cljs/build
+(require '[cljs.closure :as cljsc])
+(cljsc/build "/Users/wei/code/adam/simpleweb/src/cljs" {:optimizations :simple :output-to "/Users/wei/code/adam/simpleweb/resources/public/js/cljs.js" :source-map "/Users/wei/code/adam/simpleweb/resources/public/js/cljs.js.map"})
+1
+2
+3
+(use '[clojure.tools.namespace.repl :only (refresh)]) 
+(refresh)
+test-source-maps
+(test-source-maps "simple.cljs")
+(refresh)
+(use '[clojure.tools.namespace.repl :only (refresh)]) 
+(refresh)
+(test-source-maps "simple.cljs")
+(refresh)
+(test-source-maps "simple.cljs")
+(refresh)
+(test-source-maps "simple.cljs")
+(refresh)
+(test-source-maps "simple.cljs")
+(refresh)
+(test-source-maps "simple.cljs")
+(refresh)
+(test-source-maps "simple.cljs")
+(load "user")
+(require 'user)
+(require 'user :refresh-all)
+(require 'user :refresh)
+(reload)
+docs
+doc
+(doc 1)
+(test-source-maps "simple.cljs")
+(require 'user :reload)
+(test-source-maps "simple.cljs")
+(require 'user :reload-all)
+(doc munge)
+(require 'user :reload-all)
+(test-source-maps "simple.cljs")
+(require 'user :reload)
+(test-source-maps "simple.cljs")
+(refresh)
+(test-source-maps "simple.cljs")
+[A
+(test-source-maps "simple.cljs")
+))))
+(test-source-maps "simple.cljs")

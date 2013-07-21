@@ -6,6 +6,9 @@
     ;(if 1)
     (- one second)))
 
+(defn opttest [a & b]
+  b)
+
 (defn add [x y]
   (+ x y))
 
