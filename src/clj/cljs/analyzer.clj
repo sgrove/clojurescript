@@ -27,13 +27,15 @@
 (def depth (atom 0))
 
 (defn ptab [& msgs]
-  (let [s (apply str (concat (repeat @depth "\t") msgs))
-        chars ["*" "/" "!" "@" "+" "~" "&" "^"]
-        rand-char (nth chars (rand-int (count chars)))]
-    (println s)
-    ;(spit "out/output.txt" s :append true)
-    ;(spit "out/output.txt" rand-char :append true)
-    ))
+  nil;
+  ; (let [s (apply str (concat (repeat @depth "\t") msgs))
+  ;       chars ["*" "/" "!" "@" "+" "~" "&" "^"]
+  ;       rand-char (nth chars (rand-int (count chars)))]
+  ;   (println s)
+  ;   ;(spit "out/output.txt" s :append true)
+  ;   ;(spit "out/output.txt" rand-char :append true)
+  ;   )
+  )
 
 (def ^:dynamic *cljs-warnings*
   {:undeclared false
@@ -296,8 +298,6 @@
      :catch catch
      :children [try catch finally]}))
 
-(declare analyze-params)
-
 (defmethod parse 'def
   [op env form name]
   (ptab "Parsing 'def*")
@@ -365,7 +365,7 @@
                       :protocol-inline (:protocol-inline init-expr)
                       :variadic (:variadic init-expr)
                       :max-fixed-arity (:max-fixed-arity init-expr)
-                      :method-params (map (comp (partial analyze-params env) :params) (:methods init-expr))})))
+                      :method-params (map :params (:methods init-expr))})))
       (merge {:env env :op :def :form form
               :name name :var var-expr :doc doc :init init-expr}
              (when tag {:tag tag})
@@ -383,7 +383,19 @@
                                                :line (get-line name env)
                                                :column (get-col name env)
                                                :tag (-> name meta :tag)
-                                               :shadow (when locals (locals name))}]
+                                               :shadow (when locals (locals name))
+                                               ;; Give the fn params
+                                               ;; the same shape as a
+                                               ;; :var so it can get
+                                               ;; compiled out
+                                               ;; correctly
+                                               :op :var
+                                               :env (merge (select-keys env [:context])
+                                                           {:line (get-line name env)
+                                                            :column (get-col name env)})
+                                               :info {:name name}
+                                               :param? true
+                                               :just-munge? true}]
                                     [(assoc locals name param) (conj params param)]))
                                 [locals []] param-names)
         fixed-arity (count (if variadic (butlast params) params))
@@ -428,16 +440,20 @@
         max-fixed-arity (apply max (map :max-fixed-arity methods))
         variadic (boolean (some :variadic methods))
         locals (if name
-                 (update-in locals [name] assoc
-                            :fn-var true
-                            :variadic variadic
-                            :max-fixed-arity max-fixed-arity
-                            :method-params (map (comp (partial analyze-params env) :params) methods))
+                 (do
+                   (ptab "fn* local name: " (pr-str name))
+                   (update-in locals [name] assoc
+                              :fn-var true
+                              :variadic variadic
+                              :max-fixed-arity max-fixed-arity
+                              :method-params (map :params methods)))
                  locals)
         methods (if name
                   ;; a second pass with knowledge of our function-ness/arity
                   ;; lets us optimize self calls
-                  (no-warn (doall (map #(analyze-fn-method menv locals % type) meths)))
+                  (do
+                    (ptab "Second pass through with more info for " name)
+                    (no-warn (doall (map #(analyze-fn-method menv locals % type) meths))))
                   methods)]
     ;;todo - validate unique arities, at most one variadic, variadic takes max required args
     {:env env :op :fn :form form :name name :methods methods :variadic variadic
@@ -489,6 +505,7 @@
 
 (defn analyze-let
   [encl-env [_ bindings & exprs :as form] is-loop]
+  (ptab "Analyze let")
   (assert (and (vector? bindings) (even? (count bindings))) "bindings must be vector of even number of elements")
   (let [context (:context encl-env)
         [bes env]
@@ -510,14 +527,17 @@
                                   (-> init-expr :info :tag))
                          :local true
                          :op :var
-                         :puppy-dog :woof
-                         :shadow (-> env :locals name)}
+                         :shadow (-> env :locals name)
+                         :info {:name name}
+                         :env {:line (get-line name env)
+                               :column (get-col name env)}
+                         :just-munge? true}
                      be (if (= (:op init-expr) :fn)
                           (merge be
                             {:fn-var true
                              :variadic (:variadic init-expr)
                              :max-fixed-arity (:max-fixed-arity init-expr)
-                             :method-params (map (comp (partial analyze-params env) :params) (:methods init-expr))
+                             :method-params (map :params (:methods init-expr))
                              })
                           be)]
                  (recur (conj bes be)
@@ -894,9 +914,6 @@
      {:env env :op :invoke :form form :f fexpr :args argexprs
       :tag (or (-> fexpr :info :tag) (-> form meta :tag)) :children (into [fexpr] argexprs)})))
 
-(defn analyze-params [env params]
-  (map (comp (partial analyze-symbol env) :name) params))
-
 (defn analyze-symbol
   "Finds the var associated with sym"
   [env sym]
@@ -918,7 +935,9 @@
                                             :in-a :little-while})))
         (if-not (:def-var env)
           (do
-            (ptab "no lb, no def-var: " (assoc ret :op :var :info (resolve-existing-var env sym)))
+            (ptab "no lb, no def-var: " (dissoc (assoc ret :op :var :info (resolve-existing-var env sym))
+                                                :env :init
+                                                ))
             (assoc ret :op :var :info (resolve-existing-var env sym)))
           (do
             (ptab "no lb, def-var: " (assoc ret :op :var :info (resolve-var env sym)))
@@ -1047,35 +1066,42 @@
        (load-core)
        (cond
         (symbol? form) (let [_ (swap! depth inc)
+                             _ (ptab "Analyze symbol")
                              result (analyze-symbol env form)
                              _ (swap! depth dec)]
                          result)
         (and (seq? form) (seq form)) (let [_ (swap! depth inc)
-                             result (analyze-seq env form name)
-                             _ (swap! depth dec)]
+                                           _ (ptab "Analyze seq: " form)
+                                           result (analyze-seq env form name)
+                                           _ (swap! depth dec)]
                          result)
         (map? form) (let [_ (swap! depth inc)
-                             result (analyze-map env form name)
-                             _ (swap! depth dec)]
+                          _ (ptab "Analyze map")
+                          result (analyze-map env form name)
+                          _ (swap! depth dec)]
                          result)
         (vector? form) (let [_ (swap! depth inc)
+                             _ (ptab "Analyze vector")
                              result (analyze-vector env form name)
                              _ (swap! depth dec)]
                          result)
         (set? form) (let [_ (swap! depth inc)
-                             result (analyze-set env form name)
+                          _ (ptab "Analyze set")
+                          result (analyze-set env form name)
                              _ (swap! depth dec)]
                          result)
         (keyword? form) (let [_ (swap! depth inc)
-                             result (analyze-keyword env form)
+                              _ (ptab "Analyze keyword")
+                              result (analyze-keyword env form)
                              _ (swap! depth dec)]
                          result)
         (= form ()) (let [_ (swap! depth inc)
+                          _ (ptab "Analyze empty list?")
                              result (analyze-list env form name)
                              _ (swap! depth dec)]
                          result)
         :else (do
-                (ptab "contact")
+                (ptab "Analyze constant, just emit")
                 {:op :constant :env env :form form}))))))
 
 (defn forms-seq

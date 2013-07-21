@@ -222,8 +222,10 @@
     ; We need a way to write vars out to source maps and javascript
     ; without getting wrapped in an emit-wrap call, otherwise we get
     ; e.g. (function greet(return x, return y) {})
-    (if (:just-munge? info)
-      (emits (munge info))
+    (if (:just-munge? arg)
+      (do
+        ;(println "Emitting munged name")
+        (emits (munge var-name)))
       (when-not (= :statement (:context env))
         (emit-wrap env (emits (munge info)))))))
 
@@ -395,15 +397,10 @@
              (doseq [param params]
                ; associate enough with the param to get emit to treat
                ; it as a :var
-               (println param " | " (meta param))
-               (emit (assoc param
-                       :op :var
-                       :env (merge env
-                                   {:line (:line param)
-                                    :column (:column param)})
-                       :info {:name (:name param)
-                              :just-munge? true}))
+               (ana/ptab (select-keys param [:name :line :column :op]) " | " (meta param))
+               (emit param)
                ; Avoid extraneous comma (function greet(x, y, z,)
+
                (when-not (= param (last params))
                  (emits ",")))
              (emits "){")
@@ -460,8 +457,8 @@
   ;;fn statements get erased, serve no purpose and can pollute scope if named
   (when-not (= :statement (:context env))
     (ana/ptab "emitting :fn: " name)
-    (ana/ptab "params: " (:params methods) " | " (meta (:params methods)))
-    (map #(ana/ptab % " | " (meta %)) (:params methods))
+    ;(ana/ptab "params: " (:params (first methods)) " | " (meta (:params (first methods))))
+    ;(map #(ana/ptab % " | " (meta %)) (:params methods))
     (let [loop-locals (->> (concat (mapcat :params (filter #(and % @(:flag %)) recur-frames))
                                    (mapcat :params loop-lets))
                            (map munge)
@@ -566,16 +563,12 @@
                                                       (gensym (str (:name %) "-")))
                                              bindings)))]
       (doseq [{:keys [init] :as binding} bindings]
-        (emitln "var "
-                ; Get emit to treat the binding as a :var for proper
-                ; source-map tracking
-                (merge  {:env (merge env {:line (:line binding)
-                                          :column (:column binding)})
-                         :op :var
-                         :info {:name (:name binding)
-                                :just-munge? true
-                                :line (:line binding)
-                                :column (:column binding)}}) " = " init ";"))
+        ;(println "Emit binding: " binding " | " (meta binding))
+        (emits "var ")
+        ;(println "----> " (:name binding) " | " (keys binding) " | " (select-keys binding [:line :column :name]))
+        (emit binding)
+        ;(println "Init: " init)
+        (emits " = " init ";"))
       (when is-loop (emitln "while(true){"))
       (emits expr)
       (when is-loop
