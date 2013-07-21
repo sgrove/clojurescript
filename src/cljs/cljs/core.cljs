@@ -7405,7 +7405,7 @@ Maps become Objects. Arbitrary keys are encoded to by key->js."
     (and (instance? UUID other) (identical? uuid (.-uuid other))))
 
   IPrintWithWriter
-  (-pr-writer [_ writer _]
+  (-pr-writer [_ writer __]
     (-write writer (str "#uuid \"" uuid "\"")))
 
   IHash

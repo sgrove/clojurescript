@@ -181,7 +181,7 @@
   ;; build with
   
   (require '[cljs.closure :as cljsc])
-  (cljsc/build "src" {:optimizations :simple :output-to "hello.js" :source-map "hello.js.map"})
+  (cljsc/build "samples/hello/src" {:optimizations :simple :output-to "samples/hello/hello.js" :source-map "samples/hello/hello.js.map"})
 
   ;; load source map
   (def raw-source-map
@@ -191,5 +191,4 @@
   (first (decode raw-source-map))
 
   ;; decoded source map preserves file order
-  (= (keys (decode raw-source-map)) (:sources raw-source-map))
-  )
+  (= (keys (decode raw-source-map)) (:sources raw-source-map)))

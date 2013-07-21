@@ -24,6 +24,17 @@
 (def ^:dynamic *cljs-macros-is-classpath* true)
 (def -cljs-macros-loaded (atom false))
 
+(def depth (atom 0))
+
+(defn ptab [& msgs]
+  (let [;s (apply str (concat (repeat @depth "\t") msgs))
+        chars ["*" "/" "!" "@" "+" "~" "&" "^"]
+        rand-char (nth chars (rand-int (count chars)))]
+    ;(println s)
+    ;(spit "out/output.txt" s :append true)
+    (spit "out/output.txt" rand-char :append true)
+    ))
+
 (def ^:dynamic *cljs-warnings*
   {:undeclared false
    :redef true
@@ -232,6 +243,7 @@
 
 (defmethod parse 'if
   [op env [_ test then else :as form] name]
+  (ptab "Parsing 'if")
   (assert (>= (count form) 3) "Too few arguments to if")
   (let [test-expr (disallowing-recur (analyze (assoc env :context :expr) test))
         then-expr (analyze env then)
@@ -243,6 +255,7 @@
 
 (defmethod parse 'throw
   [op env [_ throw :as form] name]
+  (ptab "Parsing 'throw")
   (let [throw-expr (disallowing-recur (analyze (assoc env :context :expr) throw))]
     {:env env :op :throw :form form
      :throw throw-expr
@@ -250,6 +263,7 @@
 
 (defmethod parse 'try*
   [op env [_ & body :as form] name]
+  (ptab "Parsing 'try*")
   (let [body (vec body)
         catchenv (update-in env [:context] #(if (= :expr %) :return %))
         tail (peek body)
@@ -284,6 +298,7 @@
 
 (defmethod parse 'def
   [op env form name]
+  (ptab "Parsing 'def*")
   (let [pfn (fn
               ([_ sym] {:sym sym})
               ([_ sym init] {:sym sym :init init})
@@ -328,7 +343,7 @@
             (str "WARNING: " (symbol (str ns-name) (str sym))
                  " no longer fn, references are stale"))))
       (swap! namespaces assoc-in [ns-name :defs sym]
-                 (merge 
+             (merge 
                    {:name name}
                    sym-meta
                    (when doc {:doc doc})
@@ -378,6 +393,7 @@
 
 (defmethod parse 'fn*
   [op env [_ & args :as form] name]
+  (ptab "Parsing 'fn*")
   (let [[name meths] (if (symbol? (first args))
                        [(first args) (next args)]
                        [name (seq args)])
@@ -432,6 +448,7 @@
 
 (defmethod parse 'letfn*
   [op env [_ bindings & exprs :as form] name]
+  (ptab "Parsing 'letfn*")
   (assert (and (vector? bindings) (even? (count bindings))) "bindings must be vector of even number of elements")
   (let [n->fexpr (into {} (map (juxt first second) (partition 2 bindings)))
         names    (keys n->fexpr)
@@ -458,6 +475,7 @@
 
 (defmethod parse 'do
   [op env [_ & exprs :as form] _]
+  (ptab "Parsing 'do")
   (let [statements (disallowing-recur
                      (seq (map #(analyze (assoc env :context :statement) %) (butlast exprs))))
         ret (if (<= (count exprs) 1)
@@ -489,6 +507,8 @@
                                   (-> init-expr :tag)
                                   (-> init-expr :info :tag))
                          :local true
+                         :op :var
+                         :puppy-dog :woof
                          :shadow (-> env :locals name)}
                      be (if (= (:op init-expr) :fn)
                           (merge be
@@ -514,14 +534,17 @@
 
 (defmethod parse 'let*
   [op encl-env form _]
+  (ptab "Parsing 'let*")
   (analyze-let encl-env form false))
 
 (defmethod parse 'loop*
   [op encl-env form _]
+  (ptab "Parsing 'loop*")
   (analyze-let encl-env form true))
 
 (defmethod parse 'recur
   [op env [_ & exprs :as form] _]
+  (ptab "Parsing 'recur")
   (let [context (:context env)
         frame (first *recur-frames*)
         exprs (disallowing-recur (vec (map #(analyze (assoc env :context :expr) %) exprs)))]
@@ -535,10 +558,12 @@
 
 (defmethod parse 'quote
   [_ env [_ x] _]
+  (ptab "Parsing 'quote")
   (analyze (assoc env :quoted? true) x))
 
 (defmethod parse 'new
   [_ env [_ ctor & args :as form] _]
+  (ptab "Parsing 'new")
   (assert (symbol? ctor) "First arg to new must be a symbol")
   (disallowing-recur
    (let [enve (assoc env :context :expr)
@@ -555,6 +580,7 @@
 
 (defmethod parse 'set!
   [_ env [_ target val alt :as form] _]
+  (ptab "Parsing 'set!")
   (let [[target val] (if alt
                        ;; (set! o -prop val)
                        [`(. ~target ~val) alt]
@@ -608,6 +634,7 @@
 
 (defmethod parse 'ns
   [_ env [_ name & args :as form] _]
+  (ptab "Parsing 'ns")
   (assert (symbol? name) "Namespaces must be named by a symbol.")
   (let [docstring (if (string? (first args)) (first args))
         args      (if docstring (next args) args)
@@ -715,6 +742,7 @@
 
 (defmethod parse 'deftype*
   [_ env [_ tsym fields pmasks :as form] _]
+  (ptab "Parsing 'deftype*")
   (let [t (:name (resolve-var (dissoc env :locals) tsym))]
     (swap! namespaces update-in [(-> env :ns :name) :defs tsym]
            (fn [m]
@@ -729,6 +757,7 @@
 
 (defmethod parse 'defrecord*
   [_ env [_ tsym fields pmasks :as form] _]
+  (ptab "Parsing 'defrecord*")
   (let [t (:name (resolve-var (dissoc env :locals) tsym))]
     (swap! namespaces update-in [(-> env :ns :name) :defs tsym]
            (fn [m]
@@ -796,6 +825,7 @@
 
 (defmethod parse '.
   [_ env [_ target & [field & member+] :as form] _]
+  (ptab "Parsing '.")
   (disallowing-recur
    (let [{:keys [dot-action target method field args]} (build-dot-form [target field member+])
          enve        (assoc env :context :expr)
@@ -816,6 +846,7 @@
 
 (defmethod parse 'js*
   [op env [_ jsform & args :as form] _]
+  (ptab "Parsing 'js*")
   (assert (string? jsform))
   (if args
     (disallowing-recur
@@ -867,11 +898,25 @@
     {:op :constant :env env :form sym}
     (let [ret {:env env :form sym}
           lb (-> env :locals sym)]
+      (ptab "Analyzing sym:" (meta sym) " | " sym " -> " (pr-str {:op       :var
+                                                    :name    (:name lb)
+                                                    :def-var (:def-var env)
+                                                    :line    (:line (meta sym))
+                                                    :column  (:column (meta sym))}))
       (if lb
-        (assoc ret :op :var :info lb)
+        (do
+          (ptab "lb therefore: " (assoc ret :op :var :info lb))
+          (assoc ret :op :var :info (merge lb
+                                           {
+                                            :op :var
+                                            :in-a :little-while})))
         (if-not (:def-var env)
-          (assoc ret :op :var :info (resolve-existing-var env sym))
-          (assoc ret :op :var :info (resolve-var env sym)))))))
+          (do
+            (ptab "no lb, no def-var: " (assoc ret :op :var :info (resolve-existing-var env sym)))
+            (assoc ret :op :var :info (resolve-existing-var env sym)))
+          (do
+            (ptab "no lb, def-var: " (assoc ret :op :var :info (resolve-var env sym)))
+            (assoc ret :op :var :info (resolve-var env sym))))))))
 
 (defn get-expander [sym env]
   (let [mvar
@@ -916,6 +961,7 @@
 
 (defn analyze-seq
   [env form name]
+  (ptab "analyze-seq " name " | "(meta form))
   (if (:quoted? env)
     (analyze-list env form name)
     (let [env (assoc env
@@ -937,6 +983,7 @@
 
 (defn analyze-map
   [env form name]
+  (ptab "analyze-map")
   (let [expr-env (assoc env :context :expr)
         ks (disallowing-recur (vec (map #(analyze expr-env % name) (keys form))))
         vs (disallowing-recur (vec (map #(analyze expr-env % name) (vals form))))]
@@ -947,23 +994,27 @@
 
 (defn analyze-list
   [env form name]
+  (ptab "analyze-list")
   (let [expr-env (assoc env :context :expr)
         items (disallowing-recur (doall (map #(analyze expr-env % name) form)))]
     (analyze-wrap-meta {:op :list :env env :form form :items items :children items} name)))
 
 (defn analyze-vector
   [env form name]
+  (ptab "analyze-vector")
   (let [expr-env (assoc env :context :expr)
         items (disallowing-recur (vec (map #(analyze expr-env % name) form)))]
     (analyze-wrap-meta {:op :vector :env env :form form :items items :children items} name)))
 
 (defn analyze-set
   [env form name]
+  (ptab "analyze-set")
   (let [expr-env (assoc env :context :expr)
         items (disallowing-recur (vec (map #(analyze expr-env % name) form)))]
     (analyze-wrap-meta {:op :set :env env :form form :items items :children items} name)))
 
 (defn analyze-wrap-meta [expr name]
+  (ptab "analyze-wrap-meta")
   (let [form (:form expr)
         m (dissoc (meta form) :line :column)]
     (if (seq m)
@@ -989,14 +1040,37 @@
                   form)]
        (load-core)
        (cond
-        (symbol? form) (analyze-symbol env form)
-        (and (seq? form) (seq form)) (analyze-seq env form name)
-        (map? form) (analyze-map env form name)
-        (vector? form) (analyze-vector env form name)
-        (set? form) (analyze-set env form name)
-        (keyword? form) (analyze-keyword env form)
-        (= form ()) (analyze-list env form name)
-        :else {:op :constant :env env :form form})))))
+        (symbol? form) (let [_ (swap! depth inc)
+                             result (analyze-symbol env form)
+                             _ (swap! depth dec)]
+                         result)
+        (and (seq? form) (seq form)) (let [_ (swap! depth inc)
+                             result (analyze-seq env form name)
+                             _ (swap! depth dec)]
+                         result)
+        (map? form) (let [_ (swap! depth inc)
+                             result (analyze-map env form name)
+                             _ (swap! depth dec)]
+                         result)
+        (vector? form) (let [_ (swap! depth inc)
+                             result (analyze-vector env form name)
+                             _ (swap! depth dec)]
+                         result)
+        (set? form) (let [_ (swap! depth inc)
+                             result (analyze-set env form name)
+                             _ (swap! depth dec)]
+                         result)
+        (keyword? form) (let [_ (swap! depth inc)
+                             result (analyze-keyword env form)
+                             _ (swap! depth dec)]
+                         result)
+        (= form ()) (let [_ (swap! depth inc)
+                             result (analyze-list env form name)
+                             _ (swap! depth dec)]
+                         result)
+        :else (do
+                (ptab "contact")
+                {:op :constant :env env :form form}))))))
 
 (defn forms-seq
   "Seq of forms in a Clojure or ClojureScript file."

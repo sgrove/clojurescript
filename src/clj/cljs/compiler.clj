@@ -6,7 +6,7 @@
 ;   the terms of this license.
 ;   You must not remove this notice, or any other, from this software.
 
-(set! *warn-on-reflection* true)
+;(set! *warn-on-reflection* true)
 
 (ns cljs.compiler
   (:refer-clojure :exclude [munge macroexpand-1])
@@ -395,6 +395,7 @@
              (doseq [param params]
                ; associate enough with the param to get emit to treat
                ; it as a :var
+               ;(println param " | " (meta param))
                (emit (assoc param
                        :op :var
                        :env (merge env
@@ -458,6 +459,9 @@
   [{:keys [name env methods max-fixed-arity variadic recur-frames loop-lets]}]
   ;;fn statements get erased, serve no purpose and can pollute scope if named
   (when-not (= :statement (:context env))
+    (ana/ptab "emitting :fn: " name)
+    (ana/ptab "params: " (:params methods) " | " (meta (:params methods)))
+    (map #(ana/ptab % " | " (meta %)) (:params methods))
     (let [loop-locals (->> (concat (mapcat :params (filter #(and % @(:flag %)) recur-frames))
                                    (mapcat :params loop-lets))
                            (map munge)
