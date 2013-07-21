@@ -208,13 +208,21 @@
               (let [minfo {:gcol  @*cljs-gen-col*
                            :gline @*cljs-gen-line*
                            :name  var-name}]
-                (update-in m [line]
+                ; Dec the line number for 0-indexed lin numbers
+                ; expected in chrome source maps. Seems to be right.
+                (update-in m [(dec line)]
                   (fnil (fn [m]
                           (update-in m [(or column 0)]
                             (fnil (fn [v] (conj v minfo)) [])))
                     (sorted-map)))))))))
-    (when-not (= :statement (:context env))
-      (emit-wrap env (emits (munge info))))))
+    ; We need a way to write cars out to source maps and javascript
+    ; without getting wrapped in an emit-wrap calls, otherwise we get
+    ; e.g. (function greet(return x, return y) {}).
+    ; Instead of :just-munge?, :binding might be a better key
+    (if (:just-munge? arg)
+      (emits (munge var-name))
+      (when-not (= :statement (:context env))
+        (emit-wrap env (emits (munge info)))))))
 
 (defmethod emit :meta
   [{:keys [expr meta env]}]
@@ -372,7 +380,20 @@
 (defn emit-fn-method
   [{:keys [type name variadic params expr env recurs max-fixed-arity]}]
   (emit-wrap env
-             (emitln "(function " (munge name) "(" (comma-sep (map munge params)) "){")
+             ; Should we emit source-map for this inner declaration?
+             ; It may be unnecessary.
+             ;                   hello.core.greet = (function greet(){})
+             ; e.g. Do we need a source-map entry for this? --^
+
+             ; If so, we can't just munge the name and spit out a string.
+             (emits "(function " (munge name) "(")
+
+             (doseq [param params]
+               (emit param)
+               ; Avoid extraneous comma (function greet(x, y, z,)
+               (when-not (= param (last params))
+                 (emits ",")))
+             (emits "){")
              (when type
                (emitln "var self__ = this;"))
              (when recurs (emitln "while(true){"))
@@ -528,7 +549,9 @@
                                                       (gensym (str (:name %) "-")))
                                              bindings)))]
       (doseq [{:keys [init] :as binding} bindings]
-        (emitln "var " (munge binding) " = " init ";"))
+        (emits "var ")
+        (emit binding) ; Binding will be treated as a var
+        (emits " = " init ";"))
       (when is-loop (emitln "while(true){"))
       (emits expr)
       (when is-loop
