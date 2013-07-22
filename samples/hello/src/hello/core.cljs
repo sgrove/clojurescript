@@ -13,3 +13,10 @@
         seconds (last hour)]
     (.log js/console "Date: " year month day)
     (str year month day hour minutes seconds)))
+
+(defn bailey [proton neutron electron & comedies]
+  (apply + proton neutron electron)
+  (map identity comedies))
+
+(defn videotape [& rainbows]
+  (map :params rainbows))

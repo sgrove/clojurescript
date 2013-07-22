@@ -215,7 +215,7 @@
                           (update-in m [(or column 0)]
                             (fnil (fn [v] (conj v minfo)) [])))
                     (sorted-map)))))))))
-    ; We need a way to write cars out to source maps and javascript
+    ; We need a way to write vars out to source maps and javascript
     ; without getting wrapped in an emit-wrap calls, otherwise we get
     ; e.g. (function greet(return x, return y) {}).
     ; Instead of :just-munge?, :binding might be a better key
