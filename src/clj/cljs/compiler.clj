@@ -360,21 +360,36 @@
 (defn emit-apply-to
   [{:keys [name params env]}]
   (let [arglist (gensym "arglist__")
-        delegate-name (str (munge name) "__delegate")
-        params (map munge params)]
+        delegate-name (str (munge name) "__delegate")]
     (emitln "(function (" arglist "){")
     (doseq [[i param] (map-indexed vector (drop-last 2 params))]
-      (emits "var " param " = cljs.core.first(")
+      (emits "var ")
+      (emit param)
+      (emits " = cljs.core.first(")
       (emitln arglist ");")
       (emitln arglist " = cljs.core.next(" arglist ");"))
     (if (< 1 (count params))
       (do
-        (emitln "var " (last (butlast params)) " = cljs.core.first(" arglist ");")
-        (emitln "var " (last params) " = cljs.core.rest(" arglist ");")
-        (emitln "return " delegate-name "(" (string/join ", " params) ");"))
+        (emits "var ")
+        (emit (last (butlast params)))
+        (emitln " = cljs.core.first(" arglist ");")
+        (emits "var ")
+        (emit (last params))
+        (emitln " = cljs.core.rest(" arglist ");")
+        (emits "return " delegate-name "(")
+        (doseq [param params]
+          (emit param)
+          (when-not (= param (last params)) (emits ",")))
+        (emitln ");"))
       (do
-        (emitln "var " (last params) " = cljs.core.seq(" arglist ");")
-        (emitln "return " delegate-name "(" (string/join ", " params) ");")))
+        (emits "var ")
+        (emit (last params))
+        (emitln " = cljs.core.seq(" arglist ");")
+        (emits "return " delegate-name "(")
+        (doseq [param params]
+          (emit param)
+          (when-not (= param (last params)) (emits ",")))
+        (emitln ");")))
     (emits "})")))
 
 (defn emit-fn-method
@@ -408,10 +423,13 @@
   (emit-wrap env
              (let [name (or name (gensym))
                    mname (munge name)
-                   params (map munge params)
                    delegate-name (str mname "__delegate")]
                (emitln "(function() { ")
-               (emitln "var " delegate-name " = function (" (comma-sep params) "){")
+               (emits "var " delegate-name " = function (")
+               (doseq [param params]
+                 (emit param)
+                 (when-not (= param (last params)) (emits ",")))
+               (emits "){")
                (when recurs (emitln "while(true){"))
                (emits expr)
                (when recurs
@@ -426,11 +444,19 @@
                (when type
                  (emitln "var self__ = this;"))
                (when variadic
-                 (emitln "var " (last params) " = null;")
+                 (emits "var ")
+                 (emit (last params))
+                 (emits " = null;")
                  (emitln "if (arguments.length > " (dec (count params)) ") {")
-                 (emitln "  " (last params) " = cljs.core.array_seq(Array.prototype.slice.call(arguments, " (dec (count params)) "),0);")
+                 (emits "  ")
+                 (emit (last params))
+                 (emits " = cljs.core.array_seq(Array.prototype.slice.call(arguments, " (dec (count params)) "),0);")
                  (emitln "} "))
-               (emitln "return " delegate-name ".call(" (string/join ", " (cons "this" params)) ");")
+               (emits "return " delegate-name ".call(this,")
+               (doseq [param params]
+                 (emit param)
+                 (when-not (= param (last params)) (emits ",")))
+               (emits ");")
                (emitln "};")
 
                (emitln mname ".cljs$lang$maxFixedArity = " max-fixed-arity ";")
