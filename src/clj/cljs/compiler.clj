@@ -488,7 +488,7 @@
         (let [has-name? (and name true)
               name (or name (gensym))
               mname (munge name)
-              maxparams (map munge (apply max-key count (map :params methods)))
+              maxparams (apply max-key count (map :params methods))
               mmap (into {}
                      (map (fn [method]
                             [(munge (symbol (str mname "__" (count (:params method)))))
@@ -509,7 +509,9 @@
                                                       (concat (butlast maxparams) ['var_args])
                                                       maxparams)) "){")
           (when variadic
-            (emitln "var " (last maxparams) " = var_args;"))
+            (emits "var ")
+            (emit (last maxparams))
+            (emitln " = var_args;"))
           (emitln "switch(arguments.length){")
           (doseq [[n meth] ms]
             (if (:variadic meth)
