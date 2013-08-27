@@ -152,11 +152,14 @@
     (emits \/ (.replaceAll (re-matcher #"/" pattern) "\\\\/") \/ flags)))
 
 (defmethod emit-constant clojure.lang.Keyword [x]
-           (emits \" "\\uFDD0" \:
-                  (if (namespace x)
-                    (str (namespace x) "/") "")
-                  (name x)
-                  \"))
+  (if ana/*real-keywords*
+    (let [value (get @ana/*constant-table* x)]
+      (emits value))
+    (emits \" "\\uFDD0" \:
+           (if (namespace x)
+             (str (namespace x) "/") "")
+           (name x)
+           \")))
 
 (def ^:const goog-hash-max 0x100000000)
 
@@ -629,7 +632,9 @@
          (emits (first args) "." pimpl "(" (comma-sep args) ")"))
 
        keyword?
-       (emits "(new cljs.core.Keyword(" f ")).call(" (comma-sep (cons "null" args)) ")")
+       (if ana/*real-keywords*
+         (emits f ".call(" (comma-sep (cons "null" args)) ")")
+         (emits "(new cljs.core.Keyword(" f ")).call(" (comma-sep (cons "null" args)) ")"))
        
        variadic-invoke
        (let [mfa (:max-fixed-arity variadic-invoke)]
@@ -772,7 +777,10 @@
                (merge
                  {:ns (or ns-name 'cljs.user)
                   :provides [ns-name]
-                  :requires (if (= ns-name 'cljs.core) (set (vals deps)) (conj (set (vals deps)) 'cljs.core))
+                  :requires (if (= ns-name 'cljs.core)
+                              (set (vals deps))
+                              (set (remove nil? (conj (set (vals deps)) 'cljs.core
+                                                      (when ana/*real-keywords* 'constants-table)))))
                   :file dest
                   :source-file src
                   :lines @*cljs-gen-line*}
@@ -906,6 +914,25 @@
   ;; will produce a mirrored directory structure under "out" but all
   ;; files will be compiled to js.
   )
+
+(defn emit-constants-table [table]
+  (doseq [[keyword value] table]
+    (let [ns (namespace keyword)
+          name (name keyword)]
+      (emits value "=new cljs.core.Keyword(")
+      (emit-constant ns)
+      (emits ",")
+      (emit-constant name)
+      (emits ",")
+      (emit-constant (if ns
+                       (str ns "/" name)
+                       name))
+      (emits ");\n"))))
+
+(defn emit-constants-table-to-file [table dest]
+  (with-open [out ^java.io.Writer (io/make-writer dest {})]
+    (binding [*out* out]
+      (emit-constants-table table))))
 
 (comment
 
